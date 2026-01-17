@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trustworthy AI Digital Twin — RUL Prediction System</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- ROW 1: HEADER -->
+        <header class="app-header">
+            <h1 class="header-title">RUL Prediction System</h1>
+            <div class="header-badge">
+                <span class="status-dot"></span>
+                SYSTEM ONLINE
+            </div>
+        </header>
+
+        <!-- ROW 2: MAIN DASHBOARD -->
+        <!-- Logic: 3 Cols (3fr 6fr 3fr) | 2 Rows (auto 1fr) -->
+        <div class="row-main">
+
+            <!-- LEFT COLUMN -->
+            <!-- 1. Target System (Row 1, Col 1) -->
+            <div class="card target-card">
+                <h2 class="card-label">Target System</h2>
+                <select id="engineSelect" class="cyber-select">
+                    <!-- Options populated by JS -->
+                </select>
+            </div>
+
+            <!-- 2. Diagnostics (Row 2, Col 1) -->
+            <div class="card diagnostics-card">
+                <h2 class="card-label">Diagnostics</h2>
+                <div class="diag-list">
+                    <div class="diag-item">
+                        <span>MODEL STATUS</span>
+                        <span class="badge-blue">ONLINE</span>
+                    </div>
+                    <div class="diag-item">
+                        <span>DATA STREAM</span>
+                        <span class="badge-blue">SYNCED</span>
+                    </div>
+                    <div class="diag-item">
+                        <span>LATENCY</span>
+                        <span class="val">12ms</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CENTER COLUMN -->
+            <!-- 3. Info Card (Row 1, Col 2) -->
+            <div class="card info-card">
+                <h2 class="card-label">Primary Prediction Model</h2>
+                <div class="info-stats">
+                    <div class="info-stat"><span>VIB-X</span> <strong>0.04</strong></div>
+                    <div class="info-stat"><span>TEMP-C</span> <strong>420</strong></div>
+                    <div class="info-stat"><span>PRS-HI</span> <strong>101</strong></div>
+                </div>
+            </div>
+
+            <!-- 4. Main RUL Card (Row 2, Col 2) -->
+            <div class="card main-rul-card">
+                <!-- Rocket Icon -->
+                <!-- Rocket Icon -->
+                <div class="energy-core">
+                    <svg class="energy-ring" viewBox="0 0 240 240">
+                        <defs>
+                            <!-- Main gradient -->
+                            <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#00e5ff" />
+                                <stop offset="100%" stop-color="#7a5cff" />
+                            </linearGradient>
+
+                            <!-- Danger gradient -->
+                            <linearGradient id="ringDanger" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#ff9500" />
+                                <stop offset="100%" stop-color="#ff3b30" />
+                            </linearGradient>
+
+                            <!-- Glow -->
+                            <filter id="glow">
+                                <feGaussianBlur stdDeviation="5" result="blur" />
+                                <feMerge>
+                                    <feMergeNode in="blur" />
+                                    <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- Background ring -->
+                        <circle cx="120" cy="120" r="96" stroke="rgba(0,0,0,0.08)" stroke-width="16" fill="none" />
+
+                        <!-- Animated rotating outer ring -->
+                        <circle cx="120" cy="120" r="104" stroke="rgba(0, 122, 255, 0.25)" stroke-width="2" fill="none"
+                            class="energy-outer-rotate" />
+
+                        <!-- Progress ring -->
+                        <circle id="energyRingProgress" cx="120" cy="120" r="96" stroke="url(#ringGradient)"
+                            stroke-width="16" fill="none" stroke-linecap="round" filter="url(#glow)"
+                            transform="rotate(-90 120 120)" stroke-dasharray="603" stroke-dashoffset="603" />
+                    </svg>
+
+                    <div class="energy-center">
+                        <div id="rulValue" class="rul-value">--</div>
+                        <div class="rul-subtitle">Cycles Remaining</div>
+                        <div id="rulError"
+                            style="font-size: 0.75rem; color: #86868b; margin-top: 4px; font-weight: 500;">Estimated
+                            Error: ± -- cycles</div>
+                    </div>
+                </div>
+
+                <div class="stat-pills">
+                    <div class="stat-pill">
+                        <span class="pill-label">RMSE</span>
+                        <span id="rmseValue" class="pill-val">--</span>
+                    </div>
+                    <div class="stat-pill">
+                        <span class="pill-label">Prediction Range</span>
+                        <span id="rangeValue" class="pill-val">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN -->
+            <!-- 5. Health Card (Row 1-2, Col 3) -->
+            <div class="card health-card">
+                <h2 class="card-label">Engine Health Status</h2>
+                <div class="gauge-wrapper">
+                    <div class="gauge-container">
+                        <div class="gauge-body">
+                            <div class="gauge-ticks"></div>
+                            <div id="gaugeFill" class="gauge-fill"></div>
+                            <div id="gaugeMask" class="gauge-mask"></div>
+                            <div class="gauge-center-text">
+                                <span id="healthValue" class="health-val">--%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="healthStatusLabel" class="health-pill status-nominal">NOMINAL</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ROW 3: CHARTS -->
+        <div class="row-charts">
+            <div class="card chart-card">
+                <h2 class="card-label">Degradation History</h2>
+                <div class="canvas-box">
+                    <canvas id="healthChart"></canvas>
+                </div>
+            </div>
+            <div class="card chart-card">
+                <h2 class="card-label">RUL Forecast</h2>
+                <div class="canvas-box">
+                    <canvas id="rulChart"></canvas>
+                </div>
+            </div>
+            <div class="card chart-card">
+                <h2 class="card-label">Attention Map</h2>
+                <div class="canvas-box">
+                    <canvas id="attentionCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>
