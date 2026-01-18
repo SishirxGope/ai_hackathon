@@ -1,0 +1,16 @@
+pandas
+numpy
+scikit-learn
+xgboost
+shap
+torch
+torchvision
+torchaudio
+matplotlib
+seaborn
+fastapi
+uvicorn
+openpyxl
+plotext
+python-multipart
+requests
