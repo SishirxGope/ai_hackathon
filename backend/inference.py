@@ -22,7 +22,8 @@ MODEL_RMSE = 11.6
 MODEL_MAE = 6.3
 TRANSFORMER_PATH = "pipeline/models/checkpoints/transformer.pt"
 WINDOW_SIZE = 50
-XGB_RMSE = 7.7
+XGB_RMSE = 7.75
+TRANS_RMSE = 11.61
 
 # Global State (Singleton pattern via module-level variables)
 _XGB_MODEL = None
@@ -109,7 +110,7 @@ def _get_engine_data(eid):
         raise RuntimeError("System not initialized")
     return _FULL_DF[_FULL_DF['engine_id'] == eid]
 
-def predict_rul(engine_id):
+def predict_rul(engine_id, cycle=None):
     """
     Returns RUL predictions for the specific engine.
     Output: { "rul_xgb": float, "rul_transformer": float, "rul_combined": float }
@@ -122,6 +123,20 @@ def predict_rul(engine_id):
     if eng_df.empty:
         return None
         
+    # Determine Cycle Index
+    if cycle is not None:
+        matches = eng_df.index[eng_df['cycle'] == cycle].tolist()
+        if matches:
+            idx = eng_df.index.get_loc(matches[0])
+        else:
+            idx = len(eng_df) - 1 
+    else:
+        target_rul = 75
+        idx = max(WINDOW_SIZE, len(eng_df) - target_rul)
+        idx = min(idx, len(eng_df) - 1)
+        
+    logger.info(f"Predicting for Engine {eid} at Data Index {idx} (Cycle {eng_df.iloc[idx]['cycle']})")
+
     # XGBoost Inference (Last State)
     rul_xgb = 0.0
     if _XGB_MODEL:
@@ -130,20 +145,11 @@ def predict_rul(engine_id):
             booster = _XGB_MODEL.get_booster()
             expected_feats = booster.feature_names
             
-            # Prepare single row input (Mid-life sampling)
-            idx = len(eng_df) // 2
-            logger.info(f"Using cycle index {idx} / {len(eng_df)} for inference (mid-life sampling)")
             last_row = eng_df.iloc[[idx]].copy()
-            
-            # Ensure features exist
-            # Note: verify_system logic handles 'health_index' mismatch if needed.
-            # We assume load_full_data provides necessary columns (including health_index).
             
             # Filter to expected features
             valid_feats = [f for f in expected_feats if f in last_row.columns]
             
-            # Add missing if any (e.g. from global features if loaded differently)
-            # Just predict on valid intersection for now to be safe
             if valid_feats:
                 xgb_input = last_row[valid_feats]
                 preds = _XGB_MODEL.predict(xgb_input)
@@ -166,19 +172,42 @@ def predict_rul(engine_id):
                 X_seq, _ = build_sequence_dataset(eng_df, _FEATURES, window=WINDOW_SIZE)
                 
                 if len(X_seq) > 0:
-                    # Take mid-life sequence
-                    idx = len(X_seq) // 2
-                    logger.info(f"Using sequence index {idx} / {len(X_seq)} for inference (mid-life sampling)")
-                    last_seq = X_seq[idx]
+                    # Target sequence ending at 'idx'
+                    # X_seq[i] corresponds to window ending at i + window_size
+                    seq_idx = idx - WINDOW_SIZE
                     
-                    # Tensorize
-                    seq_tensor = torch.tensor(last_seq, dtype=torch.float32).unsqueeze(0).to(DEVICE)
-                    
-                    with torch.no_grad():
-                        pred = _TRANS_MODEL(seq_tensor)
-                        rul_trans = pred.item()
+                    if 0 <= seq_idx < len(X_seq):
+                        logger.info(f"Using sequence index {seq_idx} (Engine Index {idx})")
+                        last_seq = X_seq[seq_idx]
+                        
+                        # Tensorize
+                        seq_tensor = torch.tensor(last_seq, dtype=torch.float32).unsqueeze(0).to(DEVICE)
+                        
+                        with torch.no_grad():
+                            pred, weights = _TRANS_MODEL(seq_tensor, return_attention=True)
+                            rul_trans = pred.item()
+                            
+                            # Process Attention Weights
+                            # Shape: [1, nhead, seq_len, seq_len]
+                            # Average across heads: [1, seq_len, seq_len]
+                            attn_avg = weights.mean(dim=1)  # [1, 50, 50]
+                            
+                            # Downsample to 10x10
+                            # Use Adaptive Average Pooling
+                            dim = 10
+                            pool = torch.nn.AdaptiveAvgPool2d((dim, dim))
+                            attn_small = pool(attn_avg) # [1, 10, 10]
+                            
+                            # Convert to list of lists (10x10)
+                            attn_map = attn_small.squeeze(0).cpu().numpy().tolist()
+                            
+                    else:
+                        # Fallback if seq_idx invalid
+                        attn_map = []
+                        
         except Exception as e:
             logger.error(f"Transformer inference error: {e}")
+            attn_map = []  # Ensure variable exists on error
 
     # Fallback / Combination logic
     final_rul = rul_xgb
@@ -188,11 +217,29 @@ def predict_rul(engine_id):
          else:
              final_rul = rul_trans
              
+    # Slice for history
+    start_idx = max(0, idx - WINDOW_SIZE)
+    hist_slice = eng_df.iloc[start_idx : idx]
+    
+    # Extract health for current point
+    current_health = 0.0
+    if 'health_index' in eng_df.columns:
+        current_health = float(eng_df.iloc[idx]['health_index']) * 100
+
     return {
         "rul_xgb": round(rul_xgb, 2),
         "rul_transformer": round(rul_trans, 2),
         "rul_combined": round(final_rul, 2),
-        "rmse": MODEL_RMSE
+        "rmse": MODEL_RMSE,
+        "rmse_xgb": XGB_RMSE,
+        "rmse_transformer": TRANS_RMSE,
+        "window": WINDOW_SIZE,
+        "health": current_health,
+        "attention": attn_map if 'attn_map' in locals() else [],
+        "history": {
+            "health": hist_slice['health_index'].tolist() if 'health_index' in hist_slice else [],
+            "rul": hist_slice['RUL'].tolist() if 'RUL' in hist_slice else []
+        }
     }
 
 def predict_uncertainty(engine_id):
@@ -261,7 +308,13 @@ def predict_health(engine_id):
         
     # Assuming 'health_index' is in the DF (verified in load_full_data)
     if 'health_index' in eng_df.columns:
-        return float(eng_df.iloc[-1]['health_index'])
+        # Consistency with predict_rul: 
+        # Use same point where degradation is visible (75 cycles before end).
+        target_rul = 75
+        idx = max(WINDOW_SIZE, len(eng_df) - target_rul)
+        idx = min(idx, len(eng_df) - 1)
+        
+        return float(eng_df.iloc[idx]['health_index'])
     return 0.0
 
 def get_system_status():
@@ -278,3 +331,18 @@ def get_model_metrics():
         "rmse": MODEL_RMSE,
         "mae": MODEL_MAE
     }
+
+
+def get_engine_history(engine_id):
+    eid = _parse_engine_id(engine_id)
+    if eid not in _ENGINE_IDS:
+        return []
+
+    eng_df = _get_engine_data(eid)
+
+    return {
+        'cycles': eng_df['cycle'].tolist(),
+        'health': eng_df['health_index_raw'].tolist() if 'health_index_raw' in eng_df else [],
+        'rul': eng_df['RUL'].tolist() if 'RUL' in eng_df else []
+    }
+

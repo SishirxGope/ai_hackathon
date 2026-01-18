@@ -683,3 +683,50 @@ canvas {
         height: 300px;
     }
 }
+
+/* --- USER REQUESTED HEALTH CARD STYLES --- */
+.engine-health-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;   /* CENTER CONTENT */
+    padding: 16px 16px 20px 16px;
+    height: 100%;
+}
+
+.engine-health-card h3 {
+    margin-bottom: 8px;
+    font-size: 0.75rem; 
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.health-gauge-wrapper {
+    width: 220px;      /* HARD SIZE */
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.health-gauge-wrapper svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.health-status-pill {
+    margin-top: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+}
+
+.health-status-pill.nominal { background: rgba(52, 199, 89, 0.15); color: var(--accent-success); }
+.health-status-pill.warning { background: rgba(255, 149, 0, 0.15); color: var(--accent-warning); }
+.health-status-pill.critical { background: rgba(255, 59, 48, 0.15); color: var(--accent-danger); }
+

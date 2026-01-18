@@ -56,11 +56,11 @@
             <!-- CENTER COLUMN -->
             <!-- 3. Info Card (Row 1, Col 2) -->
             <div class="card info-card">
-                <h2 class="card-label">Primary Prediction Model</h2>
+                <h2 class="card-label">Model Performance</h2>
                 <div class="info-stats">
-                    <div class="info-stat"><span>VIB-X</span> <strong>0.04</strong></div>
-                    <div class="info-stat"><span>TEMP-C</span> <strong>420</strong></div>
-                    <div class="info-stat"><span>PRS-HI</span> <strong>101</strong></div>
+                    <div class="info-stat"><span>XGB&nbsp;RMSE</span> <strong id="xgbRmseVal">--</strong></div>
+                    <div class="info-stat"><span>TRANS&nbsp;RMSE</span> <strong id="transRmseVal">--</strong></div>
+                    <div class="info-stat"><span>WINDOW</span> <strong id="windowVal">50</strong></div>
                 </div>
             </div>
 
@@ -130,19 +130,40 @@
             <!-- RIGHT COLUMN -->
             <!-- 5. Health Card (Row 1-2, Col 3) -->
             <div class="card health-card">
-                <h2 class="card-label">Engine Health Status</h2>
-                <div class="gauge-wrapper">
-                    <div class="gauge-container">
-                        <div class="gauge-body">
-                            <div class="gauge-ticks"></div>
-                            <div id="gaugeFill" class="gauge-fill"></div>
-                            <div id="gaugeMask" class="gauge-mask"></div>
-                            <div class="gauge-center-text">
-                                <span id="healthValue" class="health-val">--%</span>
-                            </div>
-                        </div>
+                <div class="engine-health-card">
+                    <h3>ENGINE HEALTH STATUS</h3>
+
+                    <div class="health-gauge-wrapper">
+                        <!-- SVG Gauge -->
+                        <svg viewBox="0 0 200 110">
+                            <!-- Definitions for gradient -->
+                            <defs>
+                                <linearGradient id="healthGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#34C759" />
+                                    <stop offset="50%" stop-color="#FF9500" />
+                                    <stop offset="100%" stop-color="#FF3B30" />
+                                </linearGradient>
+                            </defs>
+
+                            <!-- Track Background -->
+                            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="rgba(0,0,0,0.1)"
+                                stroke-width="20" stroke-linecap="round" />
+
+                            <!-- Value Path -->
+                            <!-- Length of arc with r=80 is PI*80 = 251.3 -->
+                            <path id="healthGaugePath" d="M 20 100 A 80 80 0 0 1 180 100" fill="none"
+                                stroke="url(#healthGrad)" stroke-width="20" stroke-linecap="round"
+                                stroke-dasharray="251.3" stroke-dashoffset="0" />
+
+                            <!-- Text Value -->
+                            <text id="healthGaugeValue" x="100" y="90" text-anchor="middle" font-size="32"
+                                font-weight="bold" fill="#1d1d1f">--%</text>
+                        </svg>
                     </div>
-                    <div id="healthStatusLabel" class="health-pill status-nominal">NOMINAL</div>
+
+                    <div id="healthStatusPill" class="health-status-pill nominal">
+                        NOMINAL
+                    </div>
                 </div>
             </div>
 

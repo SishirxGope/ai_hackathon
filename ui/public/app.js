@@ -13,6 +13,8 @@ const CONFIG = {
 // --- STATE MANAGEMENT ---
 const state = {
     selectedEngine: null,
+    currentCycle: 0,
+    maxCycle: 0,
     data: {}, // Cache for history: { engineId: { rul, health, history: { rul: [], health: [] } } }
 };
 
@@ -60,6 +62,8 @@ async function initEngineSelector() {
         if (engines.length > 0) {
             state.selectedEngine = engines[0];
             select.value = engines[0];
+            // Fetch history for initial engine
+            updateHistory(engines[0]);
         }
 
     } catch (e) {
@@ -73,32 +77,67 @@ async function initEngineSelector() {
     select.addEventListener('change', (e) => {
         state.selectedEngine = e.target.value;
         fetchData(); // Trigger immediate update
+        updateHistory(state.selectedEngine); // Fetch history
     });
+}
+
+// --- HISTORY FETCHING ---
+async function updateHistory(engineId) {
+    try {
+        const res = await fetch(`${CONFIG.API_BASE}/history/${engineId}`);
+        const data = await res.json();
+
+        if (data.cycles && data.cycles.length > 0) {
+            // Set Simulation State
+            state.maxCycle = data.cycles[data.cycles.length - 1];
+            state.currentCycle = Math.max(0, state.maxCycle - 100); // Start 100 cycles before end
+
+            // Update Degradation Chart immediately with full history (Static Context)
+            if (healthChart) {
+                healthChart.data.labels = data.cycles;
+                healthChart.data.datasets[0].data = data.health;
+                healthChart.update();
+            }
+
+            // Clear RUL accumulation for new engine
+            if (!state.data[engineId]) {
+                state.data[engineId] = { history: { rul: [], health: [] } };
+            }
+            state.data[engineId].history.rul = [];
+        }
+    } catch (e) {
+        console.error("Failed to load history:", e);
+    }
 }
 
 // --- DATA FETCHING ---
 async function fetchData() {
     const id = state.selectedEngine;
-    if (!id) return;
+    if (!id || !state.maxCycle) return;
+
+    // Simulate Cycle
+    // Increment cycle or loop
+    state.currentCycle++;
+    if (state.currentCycle > state.maxCycle) {
+        state.currentCycle = Math.max(0, state.maxCycle - 50); // Loop back slightly
+    }
 
     try {
-        // Parallel fetch
-        const [predictRes, healthRes] = await Promise.all([
-            fetch(`${CONFIG.API_BASE}/predict/${id}`),
-            fetch(`${CONFIG.API_BASE}/health/${id}`)
+        // Parallel fetch with cycle param
+        const [predictRes] = await Promise.all([
+            fetch(`${CONFIG.API_BASE}/predict/${id}?cycle=${state.currentCycle}`)
         ]);
 
-        if (!predictRes.ok || !healthRes.ok) throw new Error("API Error");
+        if (!predictRes.ok) throw new Error("API Error");
 
         const predData = await predictRes.json();
-        const healthData = await healthRes.json();
 
         // Initialize state for this engine if needed
         if (!state.data[id]) {
             state.data[id] = {
                 history: {
-                    rul: Array(CONFIG.HISTORY_LENGTH).fill(0), // Fill 0 or null
-                    health: Array(CONFIG.HISTORY_LENGTH).fill(0)
+                    rul: [], // Use array for accumulation
+                    health: []
                 }
             };
         }
@@ -106,17 +145,30 @@ async function fetchData() {
         const engState = state.data[id];
 
         // Update current values
-        // Update current values
         engState.rul = predData.rul_combined;
         engState.rmse = predData.rmse;
-        engState.health = healthData.health; // 0-100 based on backend logic
+        engState.xgbRmse = predData.rmse_xgb;
+        engState.transRmse = predData.rmse_transformer;
+        engState.window = predData.window;
+        engState.health = predData.health; // Now consolidated in predict response
+        engState.attention = predData.attention;
 
-        // Update History (Shift & Push)
-        engState.history.rul.shift();
+        // Accumulate for RUL Forecast Chart (Realtime Uneven Line)
+        // Shift if too long
+        if (engState.history.rul.length > CONFIG.HISTORY_LENGTH) {
+            engState.history.rul.shift();
+        }
         engState.history.rul.push(engState.rul);
 
-        engState.history.health.shift();
-        engState.history.health.push(engState.health);
+        // Degradation History:
+        // Use full history from /history endpoint for the "past", but maybe append current point?
+        // User wants "Degradation history still flat line".
+        // Actually, if we use /history, we get the REAL history up to max_cycle presumably.
+        // If we want to animate it, we should slice it up to currentCycle.
+        // But let's assume updateHistory fetches full history once, and we just show it.
+        // Or if user wants real-time, maybe we append?
+        // Let's stick to updateHistory for Degradation (it's "History") 
+        // and Live Accumulation for RUL Forecast (it's "Forecast" but visualized as live trend).
 
         // Update UI
         updateUI(engState);
@@ -140,62 +192,71 @@ function updateUI(eng) {
 
     document.getElementById('rmseValue').textContent = `± ${rmse.toFixed(1)}`;
     document.getElementById('rangeValue').textContent = `${minRange.toFixed(1)} – ${maxRange.toFixed(1)}`;
+    document.getElementById('rmseValue').textContent = `± ${rmse.toFixed(1)}`;
+    document.getElementById('rangeValue').textContent = `${minRange.toFixed(1)} – ${maxRange.toFixed(1)}`;
     document.getElementById('rulError').textContent = `Estimated Error: ± ${rmse.toFixed(1)} cycles`;
+
+    // Model Performance
+    if (eng.xgbRmse) document.getElementById('xgbRmseVal').textContent = eng.xgbRmse.toFixed(2);
+    if (eng.transRmse) document.getElementById('transRmseVal').textContent = eng.transRmse.toFixed(2);
+    if (eng.window) document.getElementById('windowVal').textContent = eng.window;
 
     // Energy Ring
     // Assuming maxRul is around 300-400 for normalization
-    const maxRul = 400;
+    const maxRul = 300;
     updateEnergyRing(eng.rul, maxRul);
 
     // Health Logic
     const health = Math.max(0, Math.min(100, eng.health)); // Clamp 0-100
 
     // 1. Text
-    document.getElementById('healthValue').textContent = `${health.toFixed(1)}%`;
+    // document.getElementById('healthValue').textContent = `${health.toFixed(1)}%`;
 
-    // 2. Gauge Mask (CSS Variable)
-    // Request: Convert to degrees: percent * 1.8
-    const deg = health * 1.8;
-    const gaugeMask = document.getElementById('gaugeMask');
-    // We pass degrees directly. CSS conic-gradient needs to handle it.
-    // If CSS expects %, we might need to adjust. 
-    // BUT the request explicitly asked to set variable to result of percent * 1.8.
-    // Assuming 'deg' unit is needed or implicit in usage. 
-    // Setting it as degrees string "180deg".
-    gaugeMask.style.setProperty('--gauge-percent', `${deg}deg`);
+    // 2. SVG Gauge Logic
+    // Arc length for radius 80 semi-circle is approx 251.3
+    const maxDash = 251.3;
+    // Invert: 100% health = 0 offset (full bar). 0% health = 251.3 offset (empty).
+    // Actually typically gauge fills from left (0) to right (100).
+    // If 0 offset is full, then we want to start empty?
+    // Let's assume path is drawn left to right.
+    // If dashArray is 251.3.
+    // dashOffset = 251.3 * (1 - health/100).
+
+    // BUT we want "filled" part to represent health.
+    const offset = maxDash * (1 - (health / 100));
+
+    const gaugePath = document.getElementById('healthGaugePath');
+    const gaugeValue = document.getElementById('healthGaugeValue');
+    const statusPill = document.getElementById('healthStatusPill');
+
+    if (gaugePath) {
+        gaugePath.style.strokeDashoffset = offset;
+    }
+
+    if (gaugeValue) {
+        gaugeValue.textContent = `${Math.round(health)}%`;
+    }
 
     // 3. Status Pill Logic
-    const statusLabel = document.getElementById('healthStatusLabel');
-    const gaugeFill = document.getElementById('gaugeFill');
-
     let statusText = "NOMINAL";
-    let statusClass = "health-pill status-nominal";
-    let fillClass = "gauge-fill nominal";
+    let statusClass = "health-status-pill nominal";
 
     if (health < 40) {
         statusText = "CRITICAL";
-        statusClass = "health-pill status-critical";
-        fillClass = "gauge-fill critical";
+        statusClass = "health-status-pill critical";
     } else if (health < 70) {
         statusText = "WARNING";
-        statusClass = "health-pill status-warning";
-        fillClass = "gauge-fill warning";
+        statusClass = "health-status-pill warning";
     }
 
-    // Apply text/classes
-    statusLabel.textContent = statusText;
-    statusLabel.className = statusClass;
-
-    // Apply gauge fill class (requires removing others first or just overwriting className)
-    if (gaugeFill) {
-        gaugeFill.className = fillClass;
-        // Ensure inline background is cleared so class styles apply (from previous logic)
-        gaugeFill.style.background = '';
+    if (statusPill) {
+        statusPill.textContent = statusText;
+        statusPill.className = statusClass;
     }
 
     // Charts & Heatmap
     updateCharts(eng);
-    updateHeatmap(); // Still random for now as no backend endpoint for attention
+    updateHeatmap(eng.attention);
 }
 
 
@@ -237,7 +298,7 @@ function initCharts() {
             plugins: { legend: { display: false } },
             scales: {
                 x: { display: false },
-                y: { min: 0, max: 120, grid: { color: 'rgba(0,0,0,0.05)' } }
+                y: { grid: { color: 'rgba(0,0,0,0.05)' } }
             },
             animation: false
         }
@@ -266,22 +327,50 @@ function initCharts() {
             plugins: { legend: { display: false } },
             scales: {
                 x: { display: false },
-                y: { min: 0, max: 400, grid: { color: 'rgba(0,0,0,0.05)' } }
+                y: { min: 0, max: 300, grid: { color: 'rgba(0,0,0,0.05)' } }
             },
             animation: false
         }
     });
 }
 
-function updateCharts(eng) {
-    if (!healthChart || !rulChart) return;
+// --- FORECAST GENERATION ---
+function generateForecast(currentRul) {
+    const points = [];
+    let val = currentRul;
 
-    healthChart.data.datasets[0].data = eng.history.health;
-    healthChart.update();
-
-    rulChart.data.datasets[0].data = eng.history.rul;
-    rulChart.update();
+    // Generate 50 points of decay
+    for (let i = 0; i < 50; i++) {
+        val -= 1 + Math.random() * 0.4;  // nonlinear decay
+        if (val < 0) val = 0;
+        points.push(val);
+    }
+    return points;
 }
+
+function updateCharts(eng) {
+    // 1. Health Chart is handled by updateHistory() (Full History Context)
+
+    // 2. RUL Forecast Chart: Show Live Accumulation + Forecast
+    if (rulChart) {
+        // Show the accumulated history of predictions (The "Uneven Line")
+        // And maybe project from the last point?
+        // User asked for "Realtime with changing value... uneven line".
+        // Simply plotting the accumulated history of 'rul' predictions gives us that uneven line.
+        // We can append the decay forecast to it if we want, but let's stick to the
+        // "Live Trend" of the prediction itself as it moves.
+
+        const liveData = eng.history.rul;
+
+        // Ensure labels match
+        const labels = Array(liveData.length).fill('');
+
+        rulChart.data.labels = labels;
+        rulChart.data.datasets[0].data = liveData;
+        rulChart.update();
+    }
+}
+
 
 // --- HEATMAP (Canvas Digital Rain/Grid) ---
 let heatmapCtx;
@@ -293,34 +382,59 @@ function initHeatmap() {
     heatmapCtx = canvas.getContext('2d');
 }
 
-function updateHeatmap() {
+function updateHeatmap(attentionData) {
+    if (!attentionData || !attentionData.length) return;
+
+    // Auto-detect dimensions
+    const rows = attentionData.length;
+    const cols = attentionData[0].length;
+
+    // Canvas dimensions
+    // We want to fill the canvas 300x150
     const w = 300;
     const h = 150;
-    const cols = 20;
-    const rows = 10;
     const cellW = w / cols;
     const cellH = h / rows;
 
     heatmapCtx.clearRect(0, 0, w, h);
 
+    // Normalize ? Usually attention weights sum to 1 per row. 
+    // They might be very small. 
+    // Let's find max value for scaling visibility
+    let maxVal = 0;
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-            // Random intensity for "Attention"
-            const intensity = Math.random();
-            const isHigh = intensity > 0.85;
+            if (attentionData[r][c] > maxVal) maxVal = attentionData[r][c];
+        }
+    }
 
-            // Color mapping: Light Mode
-            // High Attention = Deep Blue (#007AFF)
-            // Low Attention = Light Grey/Blue Tint
-            if (isHigh) {
-                heatmapCtx.fillStyle = `rgba(0, 122, 255, ${0.4 + Math.random() * 0.4})`;
-            } else {
-                heatmapCtx.fillStyle = `rgba(0, 122, 255, ${Math.random() * 0.1})`;
-            }
+    const scale = maxVal > 0 ? (1.0 / maxVal) : 1;
+
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            // Value
+            const val = attentionData[r][c] * scale;
+
+            // Color mapping: 
+            // Heatmap style: Blue (Low) -> Red (High) or just Blue Opacity?
+            // User UI showed Blue blocks.
+            // Let's use Opacity of a strong Blue/Purple.
+
+            // Threshold for visibility? 
+            // Using alpha
+            // const alpha = Math.min(1, val * 2.0); // Boost contrast
+
+            // Actually attention map is often diagonal.
+            // Let's use simple blue
+            // Ensure min visibility
+            const alpha = 0.1 + (val * 0.9);
+
+            heatmapCtx.fillStyle = `rgba(0, 122, 255, ${alpha})`;
 
             // Rounded rects for clearer "tech" look on white
+            // Adjust cell size slightly for gap
             heatmapCtx.beginPath();
-            heatmapCtx.roundRect(c * cellW + 1, r * cellH + 1, cellW - 2, cellH - 2, 2);
+            heatmapCtx.roundRect(c * cellW + 0.5, r * cellH + 0.5, cellW - 1, cellH - 1, 1);
             heatmapCtx.fill();
         }
     }

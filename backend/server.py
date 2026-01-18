@@ -48,12 +48,12 @@ def metrics():
     return inference.get_model_metrics()
 
 @app.get("/predict/{engine_id}", response_model=Dict[str, Any])
-def predict(engine_id: str):
+def predict(engine_id: str, cycle: int = None):
     """
     Returns RUL, Uncertainty, Confidence, and Trend.
     """
     # 1. RUL Logic
-    rul_data = inference.predict_rul(engine_id)
+    rul_data = inference.predict_rul(engine_id, cycle=cycle)
     if not rul_data:
         raise HTTPException(status_code=404, detail="Engine not found")
         
@@ -81,6 +81,10 @@ def get_health(engine_id: str):
     return {
         "health": health_val * 100
     }
+
+@app.get("/history/{engine_id}")
+def api_history(engine_id: str):
+    return inference.get_engine_history(engine_id)
 
 if __name__ == '__main__':
     print("Starting RUL Backend (FastAPI) on port 5000...")
