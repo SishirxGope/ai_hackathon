@@ -13,9 +13,11 @@ This project implements an end-to-end Predictive Maintenance system using an **A
 - **Explainable AI (XAI)**: SHAP (SHapley Additive exPlanations) values to interpret model decisions and feature importance.
 - **Interactive Dashboard**: A modern web interface for visualizing engine status, real-time RUL forecasts, and sensor trends.
 
-<video src="AI Hackathon Vid.mp4" controls title="Project Demo Video">
-  Your browser does not support the video tag.
-</video>
+CHECK PPT for More INFO: [AI-Digital-Twin-Advanced-Prognostics-and-Predictive-Maintenance.pptx](https://github.com/user-attachments/files/24693958/AI-Digital-Twin-Advanced-Prognostics-and-Predictive-Maintenance.pptx)
+
+## Demo Video
+
+
 
 
 ## Project Structure
