@@ -15,7 +15,7 @@ This project implements an end-to-end Predictive Maintenance system using an **A
 
 CHECK PPT for More INFO: [AI-Digital-Twin-Advanced-Prognostics-and-Predictive-Maintenance.pptx](https://github.com/user-attachments/files/24693958/AI-Digital-Twin-Advanced-Prognostics-and-Predictive-Maintenance.pptx)
 
-## Demo Video
+## Demo Video : https://drive.google.com/file/d/1PMA76dVdvO0aCsnP8lqlzRpNjd_6eHFM/view?usp=sharing
 
 
 
