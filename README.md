@@ -23,21 +23,26 @@ CHECK PPT for More INFO: [AI-Digital-Twin-Advanced-Prognostics-and-Predictive-Ma
 ## Project Structure
 ```
 rul_hackathon/
+│   requirements.txt        # Python dependencies
+│
 ├── backend/                # FastAPI backend server
 │   ├── server.py           # API entry point & static file serving
 │   └── inference.py        # Inference logic for RUL and Health Index
+│
 ├── pipeline/               # Core data processing & modeling
 │   ├── models/             # Model definitions (XGBoost, Transformer)
 │   ├── data_loader.py      # Data ingestion
 │   ├── feature_engineering.py # Signal processing & feature generation
 │   ├── health_index.py     # PCA-based Health Index calculation
 │   └── ...                 # Normalization, cleaning, utils
+│
 ├── ui/                     # Frontend dashboard
 │   └── public/             # HTML, CSS, JS assets
+│
 ├── data/                   # Raw CMAPSS datasets
 ├── output/                 # Processed datasets and reports
-├── run_pipeline.py         # Main script to run the full processing & training pipeline
-└── requirements.txt        # Python dependencies
+│
+└── run_pipeline.py         # Main script to run the full processing & training pipeline
 ```
 
 ## Installation
